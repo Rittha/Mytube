@@ -1,148 +1,80 @@
-<script>
-const instances = [
-    "https://vid.puffyan.us",
-    "https://inv.nadeko.net",
-    "https://invidious.sethforprivacy.com",
-    "https://yewtu.be"
-];
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyTube Local Player</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background-color: #0f0f0f; color: white; }
+        .player-shadow { box-shadow: 0 0 50px rgba(255, 0, 0, 0.1); }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
 
-let activeInstance = instances[0];
-
-// fetch แบบกัน timeout ทุก browser
-function fetchWithTimeout(url, timeout = 5000) {
-    return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject("timeout"), timeout);
-
-        fetch(url)
-            .then(res => {
-                clearTimeout(timer);
-                resolve(res);
-            })
-            .catch(err => reject(err));
-    });
-}
-
-// smart fetch + cache
-async function smartFetch(endpoint) {
-    const cacheKey = "cache_" + endpoint;
-
-    // 🔥 ใช้ cache (เร็วขึ้น)
-    if (localStorage[cacheKey]) {
-        try {
-            return JSON.parse(localStorage[cacheKey]);
-        } catch {}
-    }
-
-    for (let url of instances) {
-        try {
-            const res = await fetchWithTimeout(`${url}/api/v1/${endpoint}`);
-            if (res.ok) {
-                activeInstance = url;
-                const data = await res.json();
-
-                // save cache
-                localStorage[cacheKey] = JSON.stringify(data);
-
-                return data;
-            }
-        } catch (e) {
-            console.log("fail:", url);
-        }
-    }
-
-    throw new Error("ทุก server ล่ม 🔥");
-}
-
-window.onload = loadHome;
-
-async function loadHome() {
-    renderSkeleton();
-    try {
-        const data = await smartFetch('trending');
-        displayVideos(data);
-    } catch (e) {
-        showError(e.message);
-    }
-}
-
-async function searchVideo() {
-    const query = document.getElementById('searchInput').value;
-    if (!query) return;
-
-    document.getElementById('gridTitle').innerText = `ผลการค้นหา: ${query}`;
-    renderSkeleton();
-
-    try {
-        const data = await smartFetch(`search?q=${encodeURIComponent(query)}`);
-        displayVideos(data);
-        document.getElementById('playerContainer').classList.add('hidden');
-    } catch (e) {
-        showError("ค้นหาไม่สำเร็จ");
-    }
-}
-
-function displayVideos(videos) {
-    const grid = document.getElementById('homeGrid');
-    grid.innerHTML = '';
-
-    videos.forEach(v => {
-        if (v.type !== 'video') return;
-
-        const thumb = `https://img.youtube.com/vi/${v.videoId}/mqdefault.jpg`;
-
-        const div = document.createElement('div');
-        div.className = 'video-card';
-
-        div.onclick = () => playVideo(v.videoId, v.title, v.author);
-
-        div.innerHTML = `
-            <img src="${thumb}"
-                 onerror="this.src='https://via.placeholder.com/320x180?text=No+Image'"
-                 class="rounded-xl w-full aspect-video object-cover bg-gray-800">
-            <div class="mt-3">
-                <h3 class="font-bold text-sm line-clamp-2">${v.title}</h3>
-                <p class="text-xs text-gray-400 mt-1">${v.author}</p>
-            </div>
-        `;
-
-        grid.appendChild(div);
-    });
-}
-
-function playVideo(id, title, author) {
-    const iframe = document.getElementById('mainPlayer');
-
-    // 🔥 fallback ถ้า embed เจ๊ง
-    iframe.onerror = () => {
-        iframe.src = `https://www.youtube.com/embed/${id}`;
-    };
-
-    iframe.src = `${activeInstance}/embed/${id}?autoplay=1`;
-
-    document.getElementById('videoTitle').innerText = title;
-    document.getElementById('videoAuthor').innerText = author;
-
-    document.getElementById('playerContainer').classList.remove('hidden');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-function renderSkeleton() {
-    document.getElementById('homeGrid').innerHTML =
-        Array(8).fill(0).map(() => `
-        <div class="flex flex-col gap-2">
-            <div class="aspect-video rounded-xl loading-shimmer"></div>
-            <div class="h-4 w-3/4 rounded loading-shimmer mt-2"></div>
+    <nav class="p-4 border-b border-gray-800 flex justify-between items-center bg-[#0f0f0f] sticky top-0 z-50">
+        <div class="flex items-center gap-2">
+            <i class="fa-brands fa-youtube text-red-600 text-3xl"></i>
+            <span class="text-xl font-bold tracking-tighter">MY-LOCAL-PLAYER</span>
         </div>
-    `).join('');
-}
+        <div class="text-xs text-gray-500 font-mono">Status: No-API Mode</div>
+    </nav>
 
-function showError(msg) {
-    document.getElementById('homeGrid').innerHTML =
-        `<p class="text-center text-red-500 py-10">${msg}</p>`;
-}
+    <main class="flex-grow container mx-auto px-4 py-10 max-w-4xl">
+        <div class="bg-[#181818] p-6 rounded-2xl border border-gray-800 mb-8">
+            <label class="block text-sm font-medium text-gray-400 mb-2">วางลิงก์วิดีโอ YouTube:</label>
+            <div class="flex gap-2">
+                <input type="text" id="urlInput" placeholder="https://www.youtube.com/watch?v=..." 
+                    class="w-full bg-[#0f0f0f] border border-gray-700 rounded-lg px-4 py-3 outline-none focus:border-red-600 transition">
+                <button onclick="processVideo()" class="bg-red-600 hover:bg-red-700 px-8 py-3 rounded-lg font-bold transition flex items-center gap-2">
+                    <i class="fa-solid fa-play"></i> เล่น
+                </button>
+            </div>
+        </div>
 
-document.getElementById('searchInput')
-.addEventListener('keypress', e => {
-    if (e.key === 'Enter') searchVideo();
-});
-</script>
+        <div id="videoArea" class="hidden animate-in fade-in duration-500">
+            <div class="aspect-video w-full rounded-2xl overflow-hidden bg-black player-shadow border border-gray-800">
+                <iframe id="mainIframe" class="w-full h-full" 
+                    src="" frameborder="0" 
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                    allowfullscreen></iframe>
+            </div>
+            <div class="mt-4 flex items-center justify-between">
+                <button onclick="clearVideo()" class="text-gray-500 hover:text-white text-sm">
+                    <i class="fa-solid fa-xmark"></i> ปิดเครื่องเล่น
+                </button>
+                <div class="text-xs text-gray-600 italic">เล่นผ่านโหมด No-Cookie (ลดโฆษณา)</div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        function processVideo() {
+            const url = document.getElementById('urlInput').value;
+            const videoId = extractId(url);
+            
+            if (videoId) {
+                const playerUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&modestbranding=1&rel=0`;
+                document.getElementById('mainIframe').src = playerUrl;
+                document.getElementById('videoArea').classList.remove('hidden');
+                window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+            } else {
+                alert('กรุณาวาง URL ของ YouTube ให้ถูกต้องครับ');
+            }
+        }
+
+        function extractId(url) {
+            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+            const match = url.match(regExp);
+            return (match && match[2].length === 11) ? match[2] : null;
+        }
+
+        function clearVideo() {
+            document.getElementById('mainIframe').src = "";
+            document.getElementById('videoArea').classList.add('hidden');
+            document.getElementById('urlInput').value = "";
+        }
+    </script>
+</body>
+</html>
