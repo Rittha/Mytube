@@ -1,49 +1,14 @@
-<!DOCTYPE html>
-<html lang="th">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MyTube Stable</title>
-
-<script src="https://cdn.tailwindcss.com"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-
-<style>
-body { background:#0f0f0f; color:white; }
-.video-card:hover { transform:scale(1.03); transition:.3s; cursor:pointer; }
-</style>
-</head>
-
-<body>
-
-<nav class="fixed top-0 w-full bg-black flex justify-between px-4 py-2 border-b border-gray-800">
-    <h1 class="font-bold text-xl">MyTube</h1>
-
-    <input id="searchInput" placeholder="ค้นหา..."
-        class="bg-gray-900 px-3 py-1 rounded w-1/2">
-
-    <button onclick="searchVideo()">🔍</button>
-</nav>
-
-<main class="pt-16 p-4">
-    <div id="player" class="hidden mb-4">
-        <iframe id="frame" class="w-full aspect-video"></iframe>
-        <h2 id="title" class="mt-2 text-lg font-bold"></h2>
-    </div>
-
-    <div id="grid" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
-</main>
-
 <script>
-const apiList = [
+const instances = [
     "https://vid.puffyan.us",
     "https://inv.nadeko.net",
-    "https://invidious.sethforprivacy.com"
+    "https://invidious.sethforprivacy.com",
+    "https://yewtu.be"
 ];
 
-let api = apiList[0];
+let activeInstance = instances[0];
 
-// fetch with timeout (รองรับทุก browser)
+// fetch แบบกัน timeout ทุก browser
 function fetchWithTimeout(url, timeout = 5000) {
     return new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject("timeout"), timeout);
@@ -57,71 +22,127 @@ function fetchWithTimeout(url, timeout = 5000) {
     });
 }
 
-// auto failover API
-async function apiFetch(endpoint) {
-    for (let node of apiList) {
+// smart fetch + cache
+async function smartFetch(endpoint) {
+    const cacheKey = "cache_" + endpoint;
+
+    // 🔥 ใช้ cache (เร็วขึ้น)
+    if (localStorage[cacheKey]) {
         try {
-            const res = await fetchWithTimeout(`${node}/api/v1/${endpoint}`);
+            return JSON.parse(localStorage[cacheKey]);
+        } catch {}
+    }
+
+    for (let url of instances) {
+        try {
+            const res = await fetchWithTimeout(`${url}/api/v1/${endpoint}`);
             if (res.ok) {
-                api = node;
-                return await res.json();
+                activeInstance = url;
+                const data = await res.json();
+
+                // save cache
+                localStorage[cacheKey] = JSON.stringify(data);
+
+                return data;
             }
-        } catch(e) {
-            console.log("node fail:", node);
+        } catch (e) {
+            console.log("fail:", url);
         }
     }
-    throw "API ล่มทั้งหมด";
+
+    throw new Error("ทุก server ล่ม 🔥");
 }
 
-// โหลดหน้าแรก
+window.onload = loadHome;
+
 async function loadHome() {
+    renderSkeleton();
     try {
-        const data = await apiFetch("trending");
-        render(data);
-    } catch(e) {
-        document.getElementById("grid").innerHTML = "โหลดไม่ได้";
+        const data = await smartFetch('trending');
+        displayVideos(data);
+    } catch (e) {
+        showError(e.message);
     }
 }
 
-// ค้นหา
 async function searchVideo() {
-    const q = document.getElementById("searchInput").value;
-    if (!q) return;
+    const query = document.getElementById('searchInput').value;
+    if (!query) return;
 
-    const data = await apiFetch(`search?q=${encodeURIComponent(q)}`);
-    render(data);
+    document.getElementById('gridTitle').innerText = `ผลการค้นหา: ${query}`;
+    renderSkeleton();
+
+    try {
+        const data = await smartFetch(`search?q=${encodeURIComponent(query)}`);
+        displayVideos(data);
+        document.getElementById('playerContainer').classList.add('hidden');
+    } catch (e) {
+        showError("ค้นหาไม่สำเร็จ");
+    }
 }
 
-// render video
-function render(videos) {
-    const grid = document.getElementById("grid");
+function displayVideos(videos) {
+    const grid = document.getElementById('homeGrid');
+    grid.innerHTML = '';
 
-    grid.innerHTML = videos
-        .filter(v => v.type === "video")
-        .map(v => `
-        <div class="video-card" onclick="play('${v.videoId}', '${v.title.replace(/'/g,"")}')">
-            <img src="https://img.youtube.com/vi/${v.videoId}/mqdefault.jpg">
-            <p>${v.title}</p>
+    videos.forEach(v => {
+        if (v.type !== 'video') return;
+
+        const thumb = `https://img.youtube.com/vi/${v.videoId}/mqdefault.jpg`;
+
+        const div = document.createElement('div');
+        div.className = 'video-card';
+
+        div.onclick = () => playVideo(v.videoId, v.title, v.author);
+
+        div.innerHTML = `
+            <img src="${thumb}"
+                 onerror="this.src='https://via.placeholder.com/320x180?text=No+Image'"
+                 class="rounded-xl w-full aspect-video object-cover bg-gray-800">
+            <div class="mt-3">
+                <h3 class="font-bold text-sm line-clamp-2">${v.title}</h3>
+                <p class="text-xs text-gray-400 mt-1">${v.author}</p>
+            </div>
+        `;
+
+        grid.appendChild(div);
+    });
+}
+
+function playVideo(id, title, author) {
+    const iframe = document.getElementById('mainPlayer');
+
+    // 🔥 fallback ถ้า embed เจ๊ง
+    iframe.onerror = () => {
+        iframe.src = `https://www.youtube.com/embed/${id}`;
+    };
+
+    iframe.src = `${activeInstance}/embed/${id}?autoplay=1`;
+
+    document.getElementById('videoTitle').innerText = title;
+    document.getElementById('videoAuthor').innerText = author;
+
+    document.getElementById('playerContainer').classList.remove('hidden');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function renderSkeleton() {
+    document.getElementById('homeGrid').innerHTML =
+        Array(8).fill(0).map(() => `
+        <div class="flex flex-col gap-2">
+            <div class="aspect-video rounded-xl loading-shimmer"></div>
+            <div class="h-4 w-3/4 rounded loading-shimmer mt-2"></div>
         </div>
-    `).join("");
+    `).join('');
 }
 
-// play video
-function play(id, title) {
-    document.getElementById("frame").src = `${api}/embed/${id}`;
-    document.getElementById("title").innerText = title;
-    document.getElementById("player").classList.remove("hidden");
-    window.scrollTo(0,0);
+function showError(msg) {
+    document.getElementById('homeGrid').innerHTML =
+        `<p class="text-center text-red-500 py-10">${msg}</p>`;
 }
 
-// enter search
-document.getElementById("searchInput")
-.addEventListener("keypress", e => {
-    if (e.key === "Enter") searchVideo();
+document.getElementById('searchInput')
+.addEventListener('keypress', e => {
+    if (e.key === 'Enter') searchVideo();
 });
-
-loadHome();
 </script>
-
-</body>
-</html>
