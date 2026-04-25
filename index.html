@@ -1,118 +1,127 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MyTube Premium - AdFree</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <style>
-        body { background-color: #0f0f0f; color: white; scroll-behavior: smooth; }
-        .video-card:hover { transform: scale(1.03); transition: 0.3s; cursor: pointer; }
-        .loading-shimmer { background: linear-gradient(90deg, #1f1f1f 25%, #2a2a2a 50%, #1f1f1f 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
-        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MyTube Stable</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
+<style>
+body { background:#0f0f0f; color:white; }
+.video-card:hover { transform:scale(1.03); transition:.3s; cursor:pointer; }
+</style>
 </head>
-<body class="antialiased">
 
-    <nav class="fixed top-0 z-50 w-full bg-[#0f0f0f]/95 backdrop-blur-sm flex items-center justify-between px-4 py-2 border-b border-[#222]">
-        <div class="flex items-center gap-4">
-            <div class="flex items-center gap-1 cursor-pointer" onclick="window.location.reload()">
-                <i class="fa-brands fa-youtube text-red-600 text-3xl"></i>
-                <span class="text-xl font-bold tracking-tighter italic">MyTube</span>
-            </div>
-        </div>
-        <div class="flex items-center w-1/2 max-w-[600px] bg-[#121212] border border-[#303030] rounded-full px-4 overflow-hidden focus-within:border-blue-500">
-            <input type="text" id="searchInput" placeholder="ค้นหาวิดีโอแบบไม่มีโฆษณา..." class="w-full bg-transparent py-2 outline-none">
-            <button onclick="searchVideo()"><i class="fa-solid fa-magnifying-glass text-gray-400"></i></button>
-        </div>
-        <div class="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center text-sm font-bold">QC</div>
-    </nav>
+<body>
 
-    <main class="pt-20 px-6 pb-20 max-w-[1600px] mx-auto">
-        <div id="playerSection" class="hidden mb-10">
-            <div class="aspect-video w-full bg-black rounded-2xl overflow-hidden shadow-2xl border border-[#333]">
-                <iframe id="mainPlayer" class="w-full h-full" src="" frameborder="0" allowfullscreen allow="autoplay"></iframe>
-            </div>
-            <h2 id="playerTitle" class="mt-4 text-2xl font-bold"></h2>
-        </div>
+<nav class="fixed top-0 w-full bg-black flex justify-between px-4 py-2 border-b border-gray-800">
+    <h1 class="font-bold text-xl">MyTube</h1>
 
-        <h2 id="gridTitle" class="text-xl font-bold mb-6 flex items-center gap-2">
-            <i class="fa-solid fa-fire text-orange-500"></i> วิดีโอแนะนำ
-        </h2>
-        <div id="videoGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"></div>
-    </main>
+    <input id="searchInput" placeholder="ค้นหา..."
+        class="bg-gray-900 px-3 py-1 rounded w-1/2">
 
-    <script>
-        const apiNodes = [
-            "https://inv.tux.rs",
-            "https://invidious.snopyta.org",
-            "https://vid.puffyan.us",
-            "https://invidious.sethforprivacy.com"
-        ];
-        let currentApi = apiNodes[0];
+    <button onclick="searchVideo()">🔍</button>
+</nav>
 
-        async function apiFetch(endpoint) {
-            for (let node of apiNodes) {
-                try {
-                    const res = await fetch(`${node}/api/v1/${endpoint}`, { signal: AbortSignal.timeout(4000) });
-                    if (res.ok) { currentApi = node; return await res.json(); }
-                } catch (e) { console.warn(`Node ${node} ขัดข้อง กำลังเปลี่ยน...`); }
+<main class="pt-16 p-4">
+    <div id="player" class="hidden mb-4">
+        <iframe id="frame" class="w-full aspect-video"></iframe>
+        <h2 id="title" class="mt-2 text-lg font-bold"></h2>
+    </div>
+
+    <div id="grid" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+</main>
+
+<script>
+const apiList = [
+    "https://vid.puffyan.us",
+    "https://inv.nadeko.net",
+    "https://invidious.sethforprivacy.com"
+];
+
+let api = apiList[0];
+
+// fetch with timeout (รองรับทุก browser)
+function fetchWithTimeout(url, timeout = 5000) {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject("timeout"), timeout);
+
+        fetch(url)
+            .then(res => {
+                clearTimeout(timer);
+                resolve(res);
+            })
+            .catch(err => reject(err));
+    });
+}
+
+// auto failover API
+async function apiFetch(endpoint) {
+    for (let node of apiList) {
+        try {
+            const res = await fetchWithTimeout(`${node}/api/v1/${endpoint}`);
+            if (res.ok) {
+                api = node;
+                return await res.json();
             }
-            throw new Error("เซิร์ฟเวอร์ไม่ตอบสนอง");
+        } catch(e) {
+            console.log("node fail:", node);
         }
+    }
+    throw "API ล่มทั้งหมด";
+}
 
-        async function loadHome() {
-            renderSkeleton();
-            try {
-                const data = await apiFetch('trending');
-                renderVideos(data);
-            } catch (e) { showError(e.message); }
-        }
+// โหลดหน้าแรก
+async function loadHome() {
+    try {
+        const data = await apiFetch("trending");
+        render(data);
+    } catch(e) {
+        document.getElementById("grid").innerHTML = "โหลดไม่ได้";
+    }
+}
 
-        async function searchVideo() {
-            const query = document.getElementById('searchInput').value;
-            if(!query) return;
-            document.getElementById('gridTitle').innerText = `ผลการค้นหา: ${query}`;
-            renderSkeleton();
-            try {
-                const data = await apiFetch(`search?q=${encodeURIComponent(query)}`);
-                renderVideos(data);
-                document.getElementById('playerSection').classList.add('hidden');
-            } catch (e) { showError("ค้นหาไม่สำเร็จ"); }
-        }
+// ค้นหา
+async function searchVideo() {
+    const q = document.getElementById("searchInput").value;
+    if (!q) return;
 
-        function renderVideos(videos) {
-            const grid = document.getElementById('videoGrid');
-            grid.innerHTML = videos.filter(v => v.type === 'video').map(v => `
-                <div class="video-card group" onclick="playVideo('${v.videoId}', '${v.title.replace(/'/g, "\\'")}')">
-                    <img src="https://img.youtube.com/vi/${v.videoId}/mqdefault.jpg" class="rounded-xl w-full aspect-video object-cover bg-[#222]">
-                    <div class="mt-3">
-                        <h3 class="font-bold text-sm line-clamp-2">${v.title}</h3>
-                        <p class="text-xs text-gray-400 mt-1">${v.author}</p>
-                    </div>
-                </div>
-            `).join('');
-        }
+    const data = await apiFetch(`search?q=${encodeURIComponent(q)}`);
+    render(data);
+}
 
-        function playVideo(id, title) {
-            const frame = document.getElementById('mainPlayer');
-            frame.src = `${currentApi}/embed/${id}?autoplay=1`;
-            document.getElementById('playerTitle').innerText = title;
-            document.getElementById('playerSection').classList.remove('hidden');
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
+// render video
+function render(videos) {
+    const grid = document.getElementById("grid");
 
-        function renderSkeleton() {
-            document.getElementById('videoGrid').innerHTML = Array(8).fill('<div class="flex flex-col gap-2"><div class="aspect-video rounded-xl loading-shimmer"></div><div class="h-4 w-3/4 rounded loading-shimmer"></div></div>').join('');
-        }
+    grid.innerHTML = videos
+        .filter(v => v.type === "video")
+        .map(v => `
+        <div class="video-card" onclick="play('${v.videoId}', '${v.title.replace(/'/g,"")}')">
+            <img src="https://img.youtube.com/vi/${v.videoId}/mqdefault.jpg">
+            <p>${v.title}</p>
+        </div>
+    `).join("");
+}
 
-        function showError(msg) {
-            document.getElementById('videoGrid').innerHTML = `<p class="col-span-full text-center text-red-500 py-10">${msg}</p>`;
-        }
+// play video
+function play(id, title) {
+    document.getElementById("frame").src = `${api}/embed/${id}`;
+    document.getElementById("title").innerText = title;
+    document.getElementById("player").classList.remove("hidden");
+    window.scrollTo(0,0);
+}
 
-        document.getElementById('searchInput').addEventListener('keypress', e => e.key === 'Enter' && searchVideo());
-        window.onload = loadHome;
-    </script>
+// enter search
+document.getElementById("searchInput")
+.addEventListener("keypress", e => {
+    if (e.key === "Enter") searchVideo();
+});
+
+loadHome();
+</script>
+
 </body>
 </html>
