@@ -1,32 +1,33 @@
-name: Jekyll site CI
+name: Deploy Static Content to Pages
 
 on:
   push:
     branches: ["main"]
-  pull_request:
-    branches: ["main"]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
-  build:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Build with Jekyll (Docker)
-        run: |
-          docker run --rm \
-          -v ${{ github.workspace }}:/srv/jekyll \
-          -v ${{ github.workspace }}/_site:/srv/jekyll/_site \
-          jekyll/builder:latest \
-          /bin/bash -c "jekyll build --future"
-
+      
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+      
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: jekyll-site
-          path: _site
+          # เลือกโฟลเดอร์ที่เก็บ index.html (ถ้าอยู่ที่ root ให้ใช้ .)
+          path: '.'
+          
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
